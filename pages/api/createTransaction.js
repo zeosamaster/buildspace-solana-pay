@@ -3,22 +3,25 @@ import {
   clusterApiUrl,
   Connection,
   PublicKey,
-  Transaction,
-  SystemProgram,
-  LAMPORTS_PER_SOL
+  Transaction
 } from "@solana/web3.js";
+import {
+  createTransferCheckedInstruction,
+  getAssociatedTokenAddress,
+  getMint
+} from "@solana/spl-token";
 import BigNumber from "bignumber.js";
 import products from "./products.json";
 
+const usdcAddress = new PublicKey(
+  "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"
+);
 const sellerAddress = "HM6sBeohe6vfxsJP9JdkA1rYjgjcBxwvqqrnS7xsRxeT";
 const sellerPublicKey = new PublicKey(sellerAddress);
 
 const createTransaction = async (req, res) => {
   try {
-    // Extract the transaction data from the request body
     const { buyer, orderID, itemID } = req.body;
-
-    // If we don't have something we need, stop!
     if (!buyer) {
       return res.status(400).json({
         message: "Missing buyer address"
@@ -31,7 +34,6 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Fetch item price from products.json using itemID
     const itemPrice = products.find((item) => item.id === itemID).price;
 
     if (!itemPrice) {
@@ -40,35 +42,43 @@ const createTransaction = async (req, res) => {
       });
     }
 
-    // Convert our price to the correct format
     const bigAmount = BigNumber(itemPrice);
     const buyerPublicKey = new PublicKey(buyer);
     const network = WalletAdapterNetwork.Devnet;
     const endpoint = clusterApiUrl(network);
     const connection = new Connection(endpoint);
 
-    // A blockhash is sort of like an ID for a block. It lets you identify each block.
+    const buyerUsdcAddress = await getAssociatedTokenAddress(
+      usdcAddress,
+      buyerPublicKey
+    );
+    const shopUsdcAddress = await getAssociatedTokenAddress(
+      usdcAddress,
+      sellerPublicKey
+    );
+    console.log({ buyerUsdcAddress, shopUsdcAddress });
     const { blockhash } = await connection.getLatestBlockhash("finalized");
 
-    // The first two things we need - a recent block ID
-    // and the public key of the fee payer
+    // This is new, we're getting the mint address of the token we want to transfer
+    const usdcMint = await getMint(connection, usdcAddress);
+
     const tx = new Transaction({
       recentBlockhash: blockhash,
       feePayer: buyerPublicKey
     });
 
-    // This is the "action" that the transaction will take
-    // We're just going to transfer some SOL
-    const transferInstruction = SystemProgram.transfer({
-      fromPubkey: buyerPublicKey,
-      // Lamports are the smallest unit of SOL, like Gwei with Ethereum
-      lamports: bigAmount.multipliedBy(LAMPORTS_PER_SOL).toNumber(),
-      toPubkey: sellerPublicKey
-    });
+    // Here we're creating a different type of transfer instruction
+    const transferInstruction = createTransferCheckedInstruction(
+      buyerUsdcAddress,
+      usdcAddress, // This is the address of the token we want to transfer
+      shopUsdcAddress,
+      buyerPublicKey,
+      bigAmount.toNumber() * 10 ** usdcMint.decimals,
+      usdcMint.decimals // The token could have any number of decimals
+    );
 
-    // We're adding more instructions to the transaction
+    // The rest remains the same :)
     transferInstruction.keys.push({
-      // We'll use our OrderId to find this transaction later
       pubkey: new PublicKey(orderID),
       isSigner: false,
       isWritable: false
@@ -76,7 +86,6 @@ const createTransaction = async (req, res) => {
 
     tx.add(transferInstruction);
 
-    // Formatting our transaction
     const serializedTransaction = tx.serialize({
       requireAllSignatures: false
     });
