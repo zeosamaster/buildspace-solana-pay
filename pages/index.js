@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import CreateProduct from "../components/CreateProduct";
 import HeadComponent from "../components/Head";
 import Product from "../components/Product";
 
@@ -31,6 +32,10 @@ const Products = ({ products }) => (
 
 const App = () => {
   const { publicKey } = useWallet();
+  const isOwner =
+    publicKey &&
+    publicKey.toString() === process.env.NEXT_PUBLIC_OWNER_PUBLIC_KEY;
+  const [creating, setCreating] = useState(false);
   const [products, setProducts] = useState([]);
 
   useEffect(() => {
@@ -53,9 +58,19 @@ const App = () => {
           <p className="sub-text">
             The only emoji store that accepts shitcoins
           </p>
+
+          {isOwner && (
+            <button
+              className="create-product-button"
+              onClick={() => setCreating(!creating)}
+            >
+              {creating ? "Close" : "Create Product"}
+            </button>
+          )}
         </header>
 
         <main>
+          {creating && <CreateProduct />}
           {publicKey ? (
             <Products products={products} />
           ) : (
