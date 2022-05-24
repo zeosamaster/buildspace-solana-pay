@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Keypair, Transaction } from "@solana/web3.js";
 import { findReference, FindReferenceError } from "@solana/pay";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { InfinitySpin } from "react-loader-spinner";
 import IPFSDownload from "./IpfsDownload";
-import { addOrder, hasPurchased } from "../lib/api";
+import { addOrder, hasPurchased, fetchItem } from "../lib/api";
 
 const STATUS = {
   Initial: "Initial",
@@ -18,6 +18,7 @@ export default function Buy({ itemID }) {
   const orderID = useMemo(() => Keypair.generate().publicKey, []); // Public key used to identify the order
 
   const [loading, setLoading] = useState(false);
+  const [item, setItem] = useState(null);
   const [status, setStatus] = useState(STATUS.Initial); // Tracking transaction status
 
   const order = useMemo(
@@ -61,6 +62,8 @@ export default function Buy({ itemID }) {
       const purchased = await hasPurchased(publicKey, itemID);
       if (purchased) {
         setStatus(STATUS.Paid);
+        const item = await fetchItem(itemID);
+        setItem(item);
       }
     }
     checkPurchased();
@@ -96,6 +99,15 @@ export default function Buy({ itemID }) {
         clearInterval(interval);
       };
     }
+
+    async function getItem(itemID) {
+      const item = await fetchItem(itemID);
+      setItem(item);
+    }
+
+    if (status === STATUS.Paid) {
+      getItem(itemID);
+    }
   }, [status]);
 
   if (!publicKey) {
@@ -112,12 +124,9 @@ export default function Buy({ itemID }) {
 
   return (
     <div>
-      {status === STATUS.Paid ? (
-        <IPFSDownload
-          filename="emojis.zip"
-          hash="QmWWH69mTL66r3H8P4wUn24t1L5pvdTJGUTKBqT11KCHS5"
-          cta="Download emojis"
-        />
+      {/* Display either buy button or IPFSDownload component based on if Hash exists */}
+      {item ? (
+        <IPFSDownload hash={item.hash} filename={item.filename} />
       ) : (
         <button
           disabled={loading}
